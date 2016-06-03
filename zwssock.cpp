@@ -68,7 +68,7 @@ extern "C" {
 	}
 }
 
- int zwssock_bind(zwssock_t *self, char *endpoint)
+ int zwssock_bind(zwssock_t *self, const char *endpoint)
 {
 	assert(self);
 	return zstr_sendx(self->control, "BIND", endpoint, NULL);

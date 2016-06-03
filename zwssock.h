@@ -26,7 +26,7 @@ ZWSOCK_EXPORT zwssock_t* zwssock_new_router(zctx_t *ctx);
 
 ZWSOCK_EXPORT void zwssock_destroy(zwssock_t **self_p);
 
-ZWSOCK_EXPORT int zwssock_bind(zwssock_t *self, char *endpoint);
+ZWSOCK_EXPORT int zwssock_bind(zwssock_t *self, const char *endpoint);
 
 ZWSOCK_EXPORT int zwssock_send(zwssock_t *self, zmsg_t **msg_p);
 

@@ -9,12 +9,12 @@
 extern "C" {
 #endif
 
-struct _zwssock_t
-{
-	zctx_t *ctx;                //  Our parent context
-	void *control;              //  Control to/from agent
-	void *data;                 //  Data to/from agent
-};
+	struct _zwssock_t
+	{
+		zctx_t *ctx;                //  Our parent context
+		void *control;              //  Control to/from agent
+		void *data;                 //  Data to/from agent
+	};
 
 #ifdef __cplusplus
 }
@@ -30,70 +30,133 @@ static void s_agent_task(void *args, zctx_t *ctx, void *control);
 #ifdef __cplusplus
 extern "C" {
 #endif
- zwssock_t* zwssock_new_router(zctx_t *ctx)
-{
-	zwssock_t *self = (zwssock_t *)zmalloc(sizeof(zwssock_t));
 
-	assert(self);
-
-	self->ctx = ctx;
-	self->control = zthread_fork(self->ctx, s_agent_task, NULL);
-
-	//  Create separate data socket, send address on control socket
-	self->data = zsocket_new(self->ctx, ZMQ_PAIR);
-	assert(self->data);
-	int rc = zsocket_bind(self->data, "inproc://data-%p", self->data);
-	assert(rc != -1);
-	zstr_sendf(self->control, "inproc://data-%p", self->data);
-
-	return self;
-}
-
-
-//  --------------------------------------------------------------------------
-//  Destructor
-
- void zwssock_destroy(zwssock_t **self_p)
-{
-	assert(self_p);
-	if (*self_p) {
-		zwssock_t *self = *self_p;
-		zstr_send(self->control, "TERMINATE");
-
-		char* tmp = zstr_recv(self->control);
-
-		zstr_free(&tmp);// free(zstr_recv(self->control));
-		free(self);
-		*self_p = NULL;
+	zwssock_t* zwssock_new_router(zctx_t *ctx) {
+		int err;
+		return zwssock_new_router_err(ctx, &err);
 	}
-}
 
- int zwssock_bind(zwssock_t *self, const char *endpoint)
-{
-	assert(self);
-	return zstr_sendx(self->control, "BIND", endpoint, NULL);
-}
+	zwssock_t* zwssock_new_router_err(zctx_t *ctx, int* errcode)
+	{
+		*errcode = ZWSOCK_ERR_NO_ERROR;
 
- int zwssock_send(zwssock_t *self, zmsg_t **msg_p)
-{
-	assert(self);
-	assert(zmsg_size(*msg_p) > 0);
-	zmsg_send(msg_p, self->data);
-	return 0;
-}
+		zwssock_t *self = (zwssock_t *)zmalloc(sizeof(zwssock_t));
 
- zmsg_t * zwssock_recv(zwssock_t *self)
-{
-	assert(self);
-	zmsg_t *msg = zmsg_recv_nowait(self->data);
-	return msg;
-}
+		//assert(self);
+		if (!self) {
+			*errcode = ZWSOCK_ERR_RAM; //malloc problem
+			return NULL;
+		}
 
- void* zwssock_handle(zwssock_t *self)
-{
-	assert(self);
-	return self->data;
-}
+		self->ctx = ctx;
+		self->control = zthread_fork(self->ctx, s_agent_task, NULL);
+		if (!self->control) {
+			*errcode = ZWSOCK_ERR_SOCKET; //missing data
+			free(self);
+			return NULL;
+		}
+
+		//  Create separate data socket, send address on control socket
+		self->data = zsocket_new(self->ctx, ZMQ_PAIR);
+		//assert(self->data);
+		if (!self->data) {
+			*errcode = ZWSOCK_ERR_SOCKET; //missing data
+			free(self);
+			return NULL;
+		}
+		int rc = zsocket_bind(self->data, "inproc://data-%p", self->data);
+		//assert(rc != -1)
+		if (rc == -1) {
+			*errcode = ZWSOCK_ERR_PORT; //missing data
+			free(self);
+			return NULL;
+		}
+		zstr_sendf(self->control, "inproc://data-%p", self->data);
+
+		return self;
+	}
+
+
+	//  --------------------------------------------------------------------------
+	//  Destructor
+	int zwssock_destroy(zwssock_t **self_p)
+	{
+		if(!self_p) return ZWSOCK_ERR_GEN;
+		//assert(self_p);
+		if (*self_p) {
+			zwssock_t *self = *self_p;
+			zstr_send(self->control, "TERMINATE");
+
+			char* tmp = zstr_recv(self->control);
+
+			zstr_free(&tmp);// free(zstr_recv(self->control));
+			free(self);
+			*self_p = NULL;
+		}
+	}
+
+	int zwssock_bind(zwssock_t *self, const char *endpoint)
+	{
+		int err;
+		return zwssock_bind_err(self, endpoint, &err);
+	}
+
+	int zwssock_bind_err(zwssock_t *self, const char *endpoint, int* errcode)
+	{
+		//assert(self);
+		if (!self){
+			*errcode = ZWSOCK_ERR_GEN;
+			return -1;
+		}
+		return zstr_sendx(self->control, "BIND", endpoint, NULL);
+	}
+
+	int zwssock_send(zwssock_t *self, zmsg_t **msg_p)
+	{
+		//assert(self);
+		if (!self) {
+			return ZWSOCK_ERR_GEN;
+		}
+		//assert();
+		if (!(zmsg_size(*msg_p) > 0)) {
+			return ZWSOCK_ERR_NO_MSG;
+		}		
+		zmsg_send(msg_p, self->data);
+		return 0;
+	}
+
+	zmsg_t * zwssock_recv(zwssock_t *self)
+	{
+		int err;
+		return zwssock_recv_err(self, &err);
+	}
+	zmsg_t * zwssock_recv_err(zwssock_t *self, int* errcode)
+	{
+		*errcode = ZWSOCK_ERR_NO_ERROR;
+		//assert(self);
+		if (!self) {
+			*errcode = ZWSOCK_ERR_GEN;
+			return NULL;
+		}
+		zmsg_t *msg = zmsg_recv_nowait(self->data);
+		return msg;
+	}
+
+	void* zwssock_handle(zwssock_t *self)
+	{
+		int err; 
+		return zwssock_handle_err(self, &err);
+	}
+	void* zwssock_handle_err(zwssock_t *self, int* errcode)
+	{
+		*errcode = ZWSOCK_ERR_NO_ERROR;
+		//assert(self);
+		if (!self) {
+			*errcode = ZWSOCK_ERR_GEN;
+			return NULL;
+		}
+		return self->data;
+	}
 
 
 #ifdef __cplusplus
@@ -144,7 +207,7 @@ s_agent_destroy(agent_t **self_p)
 
 //  This section covers a single client connection
 typedef enum {
-	closed = 0,	
+	closed = 0,
 	connected = 1,              //  Ready for messages
 	exception = 2               //  Failed due to some error
 } state_t;
@@ -192,7 +255,7 @@ client_destroy(client_t **self_p)
 		}
 
 		zstr_free(&self->hashkey);//free(self->hashkey);
-		
+
 		free(self);
 		*self_p = NULL;
 	}
@@ -201,7 +264,7 @@ client_destroy(client_t **self_p)
 void router_message_received(void *tag, byte* payload, int length, bool more)
 {
 	client_t *self = (client_t *)tag;
-	
+
 	assert(!more);
 
 	if (self->outgoing_msg == NULL)
@@ -209,8 +272,8 @@ void router_message_received(void *tag, byte* payload, int length, bool more)
 		self->outgoing_msg = zmsg_new();
 		zmsg_addstr(self->outgoing_msg, self->hashkey);
 	}
-		
-	zmsg_addmem(self->outgoing_msg, payload, length);	
+
+	zmsg_addmem(self->outgoing_msg, payload, length);
 
 	if (!more)
 	{
@@ -236,43 +299,43 @@ void pong_received(void *tag, byte* payload, int length)
 static void client_data_ready(client_t * self)
 {
 	zframe_t* data;
-	zwshandshake_t * handshake;	
-	
+	zwshandshake_t * handshake;
+
 	data = zframe_recv(self->agent->stream);
 
 	switch (self->state)
 	{
-	case closed:						
+	case closed:
 		// TODO: we might didn't receive the entire request, make the zwshandshake able to handle multiple inputs
-		
+
 		handshake = zwshandshake_new();
 		if (zwshandshake_parse_request(handshake, data))
 		{
 			// request is valid, getting the response
 			zframe_t* response = zwshandshake_get_response(handshake);
-			
+
 			zframe_t *address = zframe_dup(self->address);
-			
+
 			zframe_send(&address, self->agent->stream, ZFRAME_MORE);
-			zframe_send(&response, self->agent->stream, 0);			
+			zframe_send(&response, self->agent->stream, 0);
 
 			zframe_destroy(&response);
 
 			self->decoder = zwsdecoder_new(self, &router_message_received, &close_received, &ping_received, &pong_received);
-			self->state = connected;			
+			self->state = connected;
 		}
 		else
 		{
 			// request is invalid
 			// TODO: return http error and send null message to close the socket
 			self->state = exception;
-		}	
-		zwshandshake_destroy(&handshake);		
-				
+		}
+		zwshandshake_destroy(&handshake);
+
 		break;
 	case connected:
 		zwsdecoder_process_buffer(self->decoder, data);
-		
+
 		if (zwsdecoder_is_errored(self->decoder))
 		{
 			self->state = exception;
@@ -309,13 +372,21 @@ s_agent_handle_control(agent_t *self)
 		char *endpoint = zmsg_popstr(request);
 		puts(endpoint);
 		int rc = zsocket_bind(self->stream, "%s", endpoint);
-		assert(rc != -1);
+		//assert(rc != -1);
+		if (rc == -1) {
+			zsys_error("Error: zwsocket bind problem! [%s]", endpoint);
+			return ZWSOCK_ERR_SOCKET;
+		}
 		zstr_free(&endpoint);
 	}
 	else if (streq(command, "UNBIND")) {
 		char *endpoint = zmsg_popstr(request);
 		int rc = zsocket_unbind(self->stream, "%s", endpoint);
-		assert(rc != -1);
+		//assert(rc != -1);
+		if (rc == -1) {
+			zsys_error("Error: zwsocket unbind problem!");
+			return ZWSOCK_ERR_SOCKET;
+		}
 		zstr_free(&endpoint);
 	}
 	else if (streq(command, "TERMINATE")) {
@@ -336,7 +407,7 @@ s_agent_handle_router(agent_t *self)
 	char *hashkey = zframe_strhex(address);
 	client_t *client = (client_t *)zhash_lookup(self->clients, hashkey);
 	if (client == NULL) {
-		client = client_new(self, address);		
+		client = client_new(self, address);
 
 		zhash_insert(self->clients, hashkey, client);
 		zhash_freefn(self->clients, hashkey, client_free);
@@ -365,7 +436,7 @@ s_agent_handle_data(agent_t *self)
 
 	zframe_t* address;
 
-	if (client) {		
+	if (client) {
 		//  Each frame is a full ZMQ message with identity frame
 		while (zmsg_size(request)) {
 			zframe_t *receivedFrame = zmsg_pop(request);
@@ -391,7 +462,7 @@ s_agent_handle_data(agent_t *self)
 			}
 
 			byte* outgoingData = (byte*)zmalloc(frameSize);
-			
+
 			outgoingData[0] = (byte)0x82; // Binary and Final      
 
 			// No mask
@@ -429,7 +500,7 @@ s_agent_handle_data(agent_t *self)
 
 			address = zframe_dup(client->address);
 
-			zframe_send(&address, self->stream, ZFRAME_MORE);			
+			zframe_send(&address, self->stream, ZFRAME_MORE);
 			zsocket_sendmem(self->stream, outgoingData, frameSize, 0);
 
 			free(outgoingData);
@@ -463,7 +534,10 @@ void s_agent_task(void *args, zctx_t *ctx, void *control)
 			break;              //  Interrupted
 
 		if (pollitems[0].revents & ZMQ_POLLIN)
-			s_agent_handle_control(self);
+			if (s_agent_handle_control(self)) {
+				//if not 0 means error so just die 
+				return;
+			}
 		if (pollitems[1].revents & ZMQ_POLLIN)
 			s_agent_handle_router(self);
 		if (pollitems[2].revents & ZMQ_POLLIN)

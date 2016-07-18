@@ -6,6 +6,10 @@ cmake_minimum_required (VERSION 2.8)
 ## Enforced CMake policy
 cmake_policy (VERSION 2.8)
 
+if(XW_BUILD_ZWSSOCK)
+set(CMAKE_INSTALL_PREFIX "${XW_3RDP_ROOT}")
+endif() 
+
 set (ZMQ_TOOL_SET "v140")
 set (XW_ZEROMQ_VERSION "4_2_0")
 set (BOOT_PREFIX "${CMAKE_INSTALL_PREFIX}")
@@ -316,7 +320,7 @@ link_directories("${TRERDP_ROOT}/lib")
 
 IF(CMAKE_COMPILER_IS_GNUCXX)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fpermissive")
-  LINK_LIBRARIES(Ws2_32)
+  target_link_libraries(zwssock Ws2_32)
 ENDIF()
 
 
@@ -340,6 +344,12 @@ target_link_libraries(zwssock czmq ${ZEROMQ_LIBRARIES})
 			
 
 apply_preprocessor_definitions (zwssock)
+
+#if builded inside xwee src tree use also this
+if(XW_BUILD_ZWSSOCK)
+    set_bindir_properties(zwssock)
+endif()
+
 
 FILE(GLOB zwssock_headers ${ZWSSOCK_DIR}/*.h)
 INSTALL(FILES ${zwssock_headers} DESTINATION ${TRERDP_ROOT}/include)

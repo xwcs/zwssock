@@ -332,37 +332,47 @@ zframe_t* zwshandshake_get_response(zwshandshake_t *self)
 
 	char * key = (char*)zhash_lookup(self->header_fields, sec_websocket_key_name);
 
-	int len = strlen(key) + strlen(magic_string);
+	if (key) {
+		int len = strlen(key) + strlen(magic_string);
 
-	char plain[150];
+		char plain[150];
 
-	strcpy(plain, key);
-	strcat(plain, magic_string);
+		strcpy(plain, key);
+		strcat(plain, magic_string);
 
-	zdigest_t* digest = zdigest_new();
-	zdigest_update(digest, (byte *) plain, len);
+		zdigest_t* digest = zdigest_new();
+		zdigest_update(digest, (byte *)plain, len);
+
+		byte* hash = zdigest_data(digest);
+
+		char accept_key[150];
+
+		int accept_key_len = encode_base64(hash, zdigest_size(digest), accept_key, 150);
+
+		int response_len = strlen("HTTP/1.1 101 Switching Protocols\r\n"
+			"Upgrade: websocket\r\n"
+			"Connection: Upgrade\r\n"
+			"Sec-WebSocket-Accept: \r\n"
+			"Sec-WebSocket-Protocol: WSNetMQ\r\n\r\n") + accept_key_len;
+
+		char* response = (char*)zmalloc(sizeof(char) * (response_len + 1));
+
+		strcpy(response, "HTTP/1.1 101 Switching Protocols\r\n"
+			"Upgrade: websocket\r\n"
+			"Connection: Upgrade\r\n"
+			"Sec-WebSocket-Accept: ");
+		strncat(response, accept_key, accept_key_len);
+		strcat(response, "\r\nSec-WebSocket-Protocol: WSNetMQ\r\n\r\n");
+
+		return zframe_new(response, response_len);
+	}
+	else {
+		const char* err = "HTTP/1.1 Not Found Switching Protocols\r\nContent - Type: text / plain; charset = utf - 8\r\n\r\n";
+		char* response = (char*)zmalloc(sizeof(char) * (strlen(err) + 1));
+		strcpy(response, "HTTP/1.1 Not Found Switching Protocols\r\nContent - Type: text / plain; charset = utf - 8\r\n\r\n");
+		return zframe_new(response, strlen(err));
+	}
+
 	
-	byte* hash = zdigest_data(digest);
-		
-	char accept_key[150];
-
-	int accept_key_len = encode_base64(hash, zdigest_size(digest), accept_key, 150);
-
-	int response_len = strlen("HTTP/1.1 101 Switching Protocols\r\n"
-		"Upgrade: websocket\r\n"
-		"Connection: Upgrade\r\n"
-		"Sec-WebSocket-Accept: \r\n"
-		"Sec-WebSocket-Protocol: WSNetMQ\r\n\r\n") + accept_key_len;
-
-	char* response = (char*)zmalloc(sizeof(char) * (response_len+1));
-	
-	strcpy(response, "HTTP/1.1 101 Switching Protocols\r\n"
-		"Upgrade: websocket\r\n"
-		"Connection: Upgrade\r\n"
-		"Sec-WebSocket-Accept: ");
-	strncat(response, accept_key, accept_key_len);
-	strcat(response, "\r\nSec-WebSocket-Protocol: WSNetMQ\r\n\r\n");	
-
-	return zframe_new(response, response_len);
 }
 

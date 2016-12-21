@@ -316,8 +316,8 @@ static void client_data_ready(client_t * self)
 
 			zframe_t *address = zframe_dup(self->address);
 
-			zframe_send(&address, self->agent->stream, ZFRAME_MORE);
-			zframe_send(&response, self->agent->stream, 0);
+			int ret = zframe_send(&address, self->agent->stream, ZFRAME_MORE);
+			ret = zframe_send(&response, self->agent->stream, 0);
 
 			zframe_destroy(&response);
 

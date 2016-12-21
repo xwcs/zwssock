@@ -367,9 +367,10 @@ zframe_t* zwshandshake_get_response(zwshandshake_t *self)
 		return zframe_new(response, response_len);
 	}
 	else {
-		const char* err = "HTTP/1.1 Not Found Switching Protocols\r\nContent - Type: text / plain; charset = utf - 8\r\n\r\n";
+		//simulate normal hhtp response
+		const char* err = "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nContent-Length:32\r\nContent-Type:text/html; charset=utf-8\r\n\r\n<html><body>Hello!</body></html>";
 		char* response = (char*)zmalloc(sizeof(char) * (strlen(err) + 1));
-		strcpy(response, "HTTP/1.1 Not Found Switching Protocols\r\nContent - Type: text / plain; charset = utf - 8\r\n\r\n");
+		strcpy(response, err);
 		return zframe_new(response, strlen(err));
 	}
 
